@@ -28,21 +28,53 @@ type AgentEvent = {
 function App() {
   const [repository, setRepository] = useState("");
   const [issueNumber, setIssueNumber] = useState("");
+
+  // Permanent/historical events only.
   const [events, setEvents] = useState<AgentEvent[]>([]);
+
   const [running, setRunning] = useState(false);
+
+  // ------------------------------------------------------------
+  // LIVE TEST STATE
+  // ------------------------------------------------------------
+
+  const [testStarted, setTestStarted] =
+    useState<AgentEvent | null>(null);
+
+  const [testProgress, setTestProgress] =
+    useState<AgentEvent | null>(null);
+
+  const [testResult, setTestResult] =
+    useState<AgentEvent | null>(null);
+
+  const [repairStarted, setRepairStarted] =
+    useState<AgentEvent | null>(null);
+
+  // ============================================================
+  // RUN AGENT
+  // ============================================================
 
   const analyzeIssue = async () => {
     setEvents([]);
+
     setRunning(true);
+
+    // Reset live test state
+    setTestStarted(null);
+    setTestProgress(null);
+    setTestResult(null);
+    setRepairStarted(null);
 
     try {
       const response = await fetch(
         "http://127.0.0.1:8000/analyze-stream",
         {
           method: "POST",
+
           headers: {
             "Content-Type": "application/json",
           },
+
           body: JSON.stringify({
             repository,
             issue_number: Number(issueNumber),
@@ -62,8 +94,11 @@ function App() {
         );
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+      const reader =
+        response.body.getReader();
+
+      const decoder =
+        new TextDecoder();
 
       let buffer = "";
 
@@ -71,38 +106,99 @@ function App() {
         const { value, done } =
           await reader.read();
 
-        if (done) break;
+        if (done) {
+          break;
+        }
 
-        buffer += decoder.decode(value, {
-          stream: true,
-        });
+        buffer += decoder.decode(
+          value,
+          {
+            stream: true,
+          }
+        );
 
-        const chunks = buffer.split("\n\n");
+        const chunks =
+          buffer.split("\n\n");
 
-        buffer = chunks.pop() || "";
+        buffer =
+          chunks.pop() || "";
 
         for (const chunk of chunks) {
           if (!chunk.startsWith("data:")) {
             continue;
           }
 
-          const json = chunk.replace(
-            /^data:\s*/,
-            ""
-          );
+          const json =
+            chunk.replace(
+              /^data:\s*/,
+              ""
+            );
 
           try {
             const event: AgentEvent =
               JSON.parse(json);
 
-            setEvents((previous) => [
-              ...previous,
-              event,
-            ]);
+            // ==================================================
+            // IMPORTANT:
+            //
+            // Do NOT put test_progress into events.
+            //
+            // We update ONE progress state instead.
+            // ==================================================
+
+            if (
+              event.type ===
+              "test_started"
+            ) {
+              setTestStarted(event);
+
+              // New test run means old result
+              // should disappear.
+              setTestResult(null);
+
+              // Reset progress for this run.
+              setTestProgress(null);
+
+              continue;
+            }
+
+            if (
+              event.type ===
+              "test_progress"
+            ) {
+              setTestProgress(event);
+              continue;
+            }
+
+            if (
+              event.type ===
+              "test_result"
+            ) {
+              setTestResult(event);
+              continue;
+            }
+
+            if (
+              event.type ===
+              "repair_started"
+            ) {
+              setRepairStarted(event);
+              continue;
+            }
 
             if (event.type === "done") {
               setRunning(false);
+              continue;
             }
+
+            // Everything else is a normal
+            // historical event.
+            setEvents(
+              (previous) => [
+                ...previous,
+                event,
+              ]
+            );
           } catch (error) {
             console.error(
               "Invalid SSE event:",
@@ -112,49 +208,36 @@ function App() {
         }
       }
     } catch (error) {
-      setEvents((previous) => [
-        ...previous,
-        {
-          type: "error",
-          message: String(error),
-        },
-      ]);
+      setEvents(
+        (previous) => [
+          ...previous,
+          {
+            type: "error",
+            message: String(error),
+          },
+        ]
+      );
     } finally {
       setRunning(false);
     }
   };
 
-  // ==========================================================
-  // Latest live events
-  // ==========================================================
+  // ============================================================
+  // DERIVED TEST STATE
+  // ============================================================
 
-  const latestTestProgress = [...events]
-    .reverse()
-    .find(
-      (event) =>
-        event.type === "test_progress"
-    );
+  const isTesting =
+    testStarted !== null &&
+    testResult === null;
 
-  const latestTestStarted = [...events]
-    .reverse()
-    .find(
-      (event) =>
-        event.type === "test_started"
-    );
+  const currentRepairAttempt =
+    testStarted?.repair_attempt ??
+    testProgress?.repair_attempt ??
+    0;
 
-  const latestRepair = [...events]
-    .reverse()
-    .find(
-      (event) =>
-        event.type === "repair_started"
-    );
-
-  const latestTestResult = [...events]
-    .reverse()
-    .find(
-      (event) =>
-        event.type === "test_result"
-    );
+  // ============================================================
+  // UI
+  // ============================================================
 
   return (
     <div style={pageStyle}>
@@ -165,7 +248,9 @@ function App() {
         {/* ================================================== */}
 
         <div style={headerStyle}>
-          <h1>🤖 Open Source Copilot</h1>
+          <h1>
+            🤖 Open Source Copilot
+          </h1>
 
           <p>
             AI-powered GitHub issue
@@ -190,7 +275,9 @@ function App() {
               placeholder="neomjs/neo"
               value={repository}
               onChange={(e) =>
-                setRepository(e.target.value)
+                setRepository(
+                  e.target.value
+                )
               }
               style={inputStyle}
             />
@@ -206,7 +293,9 @@ function App() {
               placeholder="19143"
               value={issueNumber}
               onChange={(e) =>
-                setIssueNumber(e.target.value)
+                setIssueNumber(
+                  e.target.value
+                )
               }
               style={{
                 ...inputStyle,
@@ -220,7 +309,9 @@ function App() {
             disabled={running}
             style={{
               ...buttonStyle,
-              opacity: running ? 0.6 : 1,
+              opacity: running
+                ? 0.6
+                : 1,
             }}
           >
             {running
@@ -236,89 +327,115 @@ function App() {
 
         <div style={panelStyle}>
 
-          <div style={panelHeaderStyle}>
-            <h2>Agent Activity</h2>
+          <div
+            style={panelHeaderStyle}
+          >
+            <h2>
+              Agent Activity
+            </h2>
 
             {running && (
-              <div style={liveIndicatorStyle}>
-                <span>●</span> LIVE
+              <div
+                style={
+                  liveIndicatorStyle
+                }
+              >
+                <span>●</span>{" "}
+                LIVE
               </div>
             )}
           </div>
 
-          {events.length === 0 && (
-            <p style={emptyStyle}>
-              Agent activity will appear here...
-            </p>
-          )}
+          {events.length === 0 &&
+            !testStarted &&
+            !testResult && (
+              <p style={emptyStyle}>
+                Agent activity will
+                appear here...
+              </p>
+            )}
 
           {/* ================================================= */}
           {/* REPAIR STATUS */}
           {/* ================================================= */}
 
-          {latestRepair && running && (
-            <div style={repairCardStyle}>
+          {repairStarted &&
+            running && (
+              <div
+                style={
+                  repairCardStyle
+                }
+              >
+                <div
+                  style={
+                    repairTitleStyle
+                  }
+                >
+                  🔧 Repair Attempt{" "}
+                  {
+                    repairStarted.repair_attempt
+                  }
+                  {" / "}
+                  {
+                    repairStarted.repair_attempts
+                  }
+                </div>
 
-              <div style={repairTitleStyle}>
-                🔧 Repair Attempt{" "}
-                {latestRepair.repair_attempt}
-                {" / "}
-                {latestRepair.repair_attempts}
+                <div
+                  style={
+                    repairMessageStyle
+                  }
+                >
+                  {
+                    repairStarted.message
+                  }
+                </div>
               </div>
-
-              <div style={repairMessageStyle}>
-                {latestRepair.message}
-              </div>
-
-            </div>
-          )}
+            )}
 
           {/* ================================================= */}
-          {/* TEST PROGRESS */}
+          {/* LIVE TEST CARD */}
           {/* ================================================= */}
 
-          {latestTestProgress && (
-            <TestProgressCard
-              event={latestTestProgress}
-              repairAttempt={
-                latestTestStarted?.repair_attempt ?? 0
-              }
-            />
-          )}
+          
 
           {/* ================================================= */}
           {/* NORMAL EVENTS */}
           {/* ================================================= */}
 
-          {events
-            .filter(
-              (event) =>
-                event.type !==
-                  "test_progress" &&
-                event.type !==
-                  "test_result" &&
-                event.type !==
-                  "test_started" &&
-                event.type !==
-                  "repair_started" &&
-                event.type !== "done"
-            )
-            .map((event, index) => (
+          {events.map(
+            (event, index) => (
               <EventCard
                 key={index}
                 event={event}
               />
-            ))}
-
-          {/* ================================================= */}
-          {/* TEST RESULT */}
-          {/* ================================================= */}
-
-          {latestTestResult && (
-            <EventCard
-              event={latestTestResult}
+            )
+          )}
+          
+          {testStarted && (
+            <LiveTestCard
+              started={testStarted}
+              progress={
+                testProgress
+              }
+              result={testResult}
+              running={isTesting}
+              repairAttempt={
+                currentRepairAttempt
+              }
             />
           )}
+
+          {/* ================================================= */}
+          {/* FINAL TEST RESULT */}
+          {/* ================================================= */}
+
+          {testResult &&
+            !testStarted && (
+              <EventCard
+                event={testResult}
+              />
+            )}
 
         </div>
       </div>
@@ -326,83 +443,340 @@ function App() {
   );
 }
 
-/* ========================================================== */
-/* TEST PROGRESS */
-/* ========================================================== */
+// ============================================================
+// LIVE TEST CARD
+// ============================================================
 
-function TestProgressCard({
-  event,
+function LiveTestCard({
+  started,
+  progress,
+  result,
+  running,
   repairAttempt,
 }: {
-  event: AgentEvent;
+  started: AgentEvent;
+  progress: AgentEvent | null;
+  result: AgentEvent | null;
+  running: boolean;
   repairAttempt: number;
 }) {
+  // ----------------------------------------------------------
+  // TEST RESULT AVAILABLE
+  // ----------------------------------------------------------
+
+  if (result) {
+    const summary =
+      typeof result.summary ===
+      "object"
+        ? result.summary
+        : null;
+
+    const passed =
+      summary?.passed ?? 0;
+
+    const failed =
+      summary?.failed ?? 0;
+
+    const skipped =
+      summary?.skipped ?? 0;
+
+    const didNotRun =
+      summary?.did_not_run ?? 0;
+
+    const passedAll =
+      result.status ===
+      "passed";
+
+    return (
+      <div
+        style={{
+          ...progressCardStyle,
+
+          border: passedAll
+            ? "1px solid #22c55e"
+            : "1px solid #ef4444",
+
+          boxShadow: passedAll
+            ? "0 0 25px rgba(34,197,94,0.12)"
+            : "0 0 25px rgba(239,68,68,0.12)",
+        }}
+      >
+
+        <div
+          style={
+            progressHeaderStyle
+          }
+        >
+          <div
+            style={
+              progressTitleStyle
+            }
+          >
+            {passedAll
+              ? "✅ Tests Completed"
+              : "❌ Tests Failed"}
+          </div>
+
+          <div
+            style={
+              progressPercentStyle
+            }
+          >
+            {passedAll
+              ? "100%"
+              : "FAILED"}
+          </div>
+        </div>
+
+        <div
+          style={
+            progressNumbersStyle
+          }
+        >
+          <span>
+            {passed.toLocaleString()}
+            {" passed"}
+          </span>
+
+          <span>
+            {failed.toLocaleString()}
+            {" failed"}
+          </span>
+
+          <span>
+            {skipped.toLocaleString()}
+            {" skipped"}
+          </span>
+        </div>
+
+        <div
+          style={
+            progressTrackStyle
+          }
+        >
+          <div
+            style={{
+              ...progressFillStyle,
+
+              width:
+                passedAll
+                  ? "100%"
+                  : `${progress?.percent ?? 0}%`,
+
+              background:
+                passedAll
+                  ? "#22c55e"
+                  : "#ef4444",
+            }}
+          />
+        </div>
+
+        <div
+          style={
+            progressMessageStyle
+          }
+        >
+          {passedAll
+            ? "Full test suite completed successfully."
+            : "Test suite completed with failures."}
+        </div>
+
+        <div
+          style={
+            testResultMiniGridStyle
+          }
+        >
+          <MiniStat
+            label="Passed"
+            value={passed}
+            icon="✅"
+          />
+
+          <MiniStat
+            label="Failed"
+            value={failed}
+            icon="❌"
+          />
+
+          <MiniStat
+            label="Skipped"
+            value={skipped}
+            icon="⏭️"
+          />
+
+          <MiniStat
+            label="Did Not Run"
+            value={didNotRun}
+            icon="⚪"
+          />
+        </div>
+
+        <div
+          style={
+            resultDetailsStyle
+          }
+        >
+          <div>
+            <strong>
+              Exit Code:
+            </strong>{" "}
+            {result.exit_code}
+          </div>
+
+          <div>
+            🔧 Repair attempt:{" "}
+            {result.repair_attempt ??
+              0}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ----------------------------------------------------------
+  // LIVE PROGRESS
+  // ----------------------------------------------------------
+
   const completed =
-    event.completed ?? 0;
+    progress?.completed ?? 0;
 
   const total =
-    event.total ?? 0;
+    progress?.total ?? 0;
 
   const percent = Math.min(
-    event.percent ?? 0,
+    progress?.percent ?? 0,
     100
   );
 
+  const title =
+    repairAttempt > 0
+      ? `Running Tests — Repair ${repairAttempt}`
+      : "Running Tests";
+
   return (
-    <div style={progressCardStyle}>
+    <div
+      style={
+        progressCardStyle
+      }
+    >
 
-      <div style={progressHeaderStyle}>
-
-        <div style={progressTitleStyle}>
-          🧪{" "}
-          {repairAttempt > 0
-            ? `Running Tests — Repair ${repairAttempt}`
-            : "Running Tests"}
+      <div
+        style={
+          progressHeaderStyle
+        }
+      >
+        <div
+          style={
+            progressTitleStyle
+          }
+        >
+          🧪 {title}
         </div>
 
-        <div style={progressPercentStyle}>
-          {percent.toFixed(1)}%
+        <div
+          style={
+            progressPercentStyle
+          }
+        >
+          {progress
+            ? `${percent.toFixed(1)}%`
+            : "Starting..."}
         </div>
-
       </div>
 
-      <div style={progressNumbersStyle}>
+      {/* -------------------------------------------------- */}
+      {/* NUMBERS */}
+      {/* -------------------------------------------------- */}
+
+      <div
+        style={
+          progressNumbersStyle
+        }
+      >
         <span>
-          {completed.toLocaleString()}
-          {" / "}
-          {total
-            ? total.toLocaleString()
-            : "?"}
+          {progress
+            ? `${completed.toLocaleString()} / ${
+                total
+                  ? total.toLocaleString()
+                  : "?"
+              }`
+            : "Preparing test suite..."}
         </span>
 
         <span>
           {total
             ? `${total.toLocaleString()} tests`
-            : "Tests"}
+            : "Docker sandbox"}
         </span>
       </div>
 
-      <div style={progressTrackStyle}>
+      {/* -------------------------------------------------- */}
+      {/* PROGRESS BAR */}
+      {/* -------------------------------------------------- */}
+
+      <div
+        style={
+          progressTrackStyle
+        }
+      >
         <div
           style={{
             ...progressFillStyle,
-            width: `${percent}%`,
+
+            width: progress
+              ? `${percent}%`
+              : "3%",
+
+            animation:
+              progress
+                ? undefined
+                : "pulse 1.5s infinite",
           }}
         />
       </div>
 
-      <div style={progressMessageStyle}>
-        {event.message ||
-          "Running test suite..."}
+      {/* -------------------------------------------------- */}
+      {/* CURRENT MESSAGE */}
+      {/* -------------------------------------------------- */}
+
+      <div
+        style={
+          progressMessageStyle
+        }
+      >
+        {progress?.message ||
+          started.message ||
+          "Starting test suite..."}
       </div>
 
+      {/* -------------------------------------------------- */}
+      {/* STATUS */}
+      {/* -------------------------------------------------- */}
+
+      <div
+        style={
+          runningStatusStyle
+        }
+      >
+        <span
+          style={
+            runningDotStyle
+          }
+        >
+          ●
+        </span>
+
+        {progress
+          ? "Tests are running inside Docker sandbox..."
+          : "Preparing Docker sandbox and starting tests..."}
+      </div>
     </div>
   );
 }
 
-/* ========================================================== */
-/* EVENT CARD */
-/* ========================================================== */
+// ============================================================
+// NORMAL EVENT CARD
+// ============================================================
 
 function EventCard({
   event,
@@ -426,7 +800,10 @@ function EventCard({
   // ANALYSIS
   // ----------------------------------------------------------
 
-  if (event.type === "analysis") {
+  if (
+    event.type ===
+    "analysis"
+  ) {
     return (
       <div style={cardStyle}>
 
@@ -434,7 +811,9 @@ function EventCard({
           🧠 Root Cause Analysis
         </h3>
 
-        <div style={sectionStyle}>
+        <div
+          style={sectionStyle}
+        >
           <strong>
             Root Cause
           </strong>
@@ -444,7 +823,9 @@ function EventCard({
           </p>
         </div>
 
-        <div style={sectionStyle}>
+        <div
+          style={sectionStyle}
+        >
           <strong>
             Explanation
           </strong>
@@ -462,7 +843,10 @@ function EventCard({
   // PATCH
   // ----------------------------------------------------------
 
-  if (event.type === "patch") {
+  if (
+    event.type ===
+    "patch"
+  ) {
     return (
       <div style={cardStyle}>
 
@@ -473,20 +857,32 @@ function EventCard({
         </h3>
 
         <p>
-          <strong>File:</strong>{" "}
-          <code>{event.file}</code>
+          <strong>
+            File:
+          </strong>{" "}
+          <code>
+            {event.file}
+          </code>
         </p>
 
-        <div style={diffBox}>
-
-          <div style={removedCodeStyle}>
+        <div
+          style={diffBox}
+        >
+          <div
+            style={
+              removedCodeStyle
+            }
+          >
             - {event.old_text}
           </div>
 
-          <div style={addedCodeStyle}>
+          <div
+            style={
+              addedCodeStyle
+            }
+          >
             + {event.new_text}
           </div>
-
         </div>
 
         <p>
@@ -500,128 +896,31 @@ function EventCard({
   }
 
   // ----------------------------------------------------------
-  // TEST RESULT
-  // ----------------------------------------------------------
-
-  if (event.type === "test_result") {
-
-    const summary =
-      typeof event.summary === "object"
-        ? event.summary
-        : null;
-
-    const passed =
-      summary?.passed ?? 0;
-
-    const failed =
-      summary?.failed ?? 0;
-
-    const skipped =
-      summary?.skipped ?? 0;
-
-    const didNotRun =
-      summary?.did_not_run ?? 0;
-
-    const passedAll =
-      event.status === "passed";
-
-    return (
-      <div
-        style={{
-          ...cardStyle,
-          border: passedAll
-            ? "1px solid #22c55e"
-            : "1px solid #ef4444",
-        }}
-      >
-
-        <div style={testResultHeaderStyle}>
-          <h3>
-            🧪 Test Results
-          </h3>
-
-          <span
-            style={{
-              ...statusBadgeStyle,
-              background: passedAll
-                ? "#14532d"
-                : "#7f1d1d",
-            }}
-          >
-            {passedAll
-              ? "PASSED"
-              : "FAILED"}
-          </span>
-        </div>
-
-        <div style={statsGridStyle}>
-
-          <Stat
-            label="Passed"
-            value={passed}
-            icon="✅"
-          />
-
-          <Stat
-            label="Failed"
-            value={failed}
-            icon="❌"
-          />
-
-          <Stat
-            label="Skipped"
-            value={skipped}
-            icon="⏭️"
-          />
-
-          <Stat
-            label="Did Not Run"
-            value={didNotRun}
-            icon="⚪"
-          />
-
-        </div>
-
-        <div style={resultDetailsStyle}>
-          <div>
-            <strong>
-              Exit Code:
-            </strong>{" "}
-            {event.exit_code}
-          </div>
-
-          {event.repair_attempt !==
-            undefined && (
-            <div>
-              🔧 Repair attempt:{" "}
-              {event.repair_attempt}
-            </div>
-          )}
-        </div>
-
-      </div>
-    );
-  }
-
-  // ----------------------------------------------------------
   // FINAL
   // ----------------------------------------------------------
 
-  if (event.type === "final") {
-
+  if (
+    event.type ===
+    "final"
+  ) {
     const verified =
-      event.status === "verified";
+      event.status ===
+      "verified";
 
     return (
       <div
         style={{
           ...cardStyle,
-          border: verified
-            ? "1px solid #22c55e"
-            : "1px solid #f59e0b",
-          background: verified
-            ? "#052e16"
-            : "#1c1917",
+
+          border:
+            verified
+              ? "1px solid #22c55e"
+              : "1px solid #f59e0b",
+
+          background:
+            verified
+              ? "#052e16"
+              : "#1c1917",
         }}
       >
 
@@ -642,7 +941,8 @@ function EventCard({
           <strong>
             Repair attempts:
           </strong>{" "}
-          {event.repair_attempts ?? 0}
+          {event.repair_attempts ??
+            0}
         </p>
 
       </div>
@@ -653,14 +953,20 @@ function EventCard({
   // ERROR
   // ----------------------------------------------------------
 
-  if (event.type === "error") {
+  if (
+    event.type ===
+    "error"
+  ) {
     return (
       <div
         style={{
           ...cardStyle,
+
           border:
             "1px solid #ef4444",
-          color: "#fecaca",
+
+          color:
+            "#fecaca",
         }}
       >
         ❌ {event.message}
@@ -671,11 +977,11 @@ function EventCard({
   return null;
 }
 
-/* ========================================================== */
-/* STAT */
-/* ========================================================== */
+// ============================================================
+// MINI STAT
+// ============================================================
 
-function Stat({
+function MiniStat({
   label,
   value,
   icon,
@@ -685,30 +991,43 @@ function Stat({
   icon: string;
 }) {
   return (
-    <div style={statStyle}>
-
-      <div style={statLabelStyle}>
+    <div
+      style={miniStatStyle}
+    >
+      <div
+        style={
+          miniStatLabelStyle
+        }
+      >
         {icon} {label}
       </div>
 
-      <div style={statValueStyle}>
+      <div
+        style={
+          miniStatValueStyle
+        }
+      >
         {value.toLocaleString()}
       </div>
-
     </div>
   );
 }
 
-/* ========================================================== */
-/* STYLES */
-/* ========================================================== */
+// ============================================================
+// STYLES
+// ============================================================
 
 const pageStyle = {
   minHeight: "100vh",
+
   background:
     "linear-gradient(135deg, #020617, #0f172a)",
+
   color: "#e2e8f0",
-  padding: "40px 20px",
+
+  padding:
+    "40px 20px",
+
   fontFamily:
     "Inter, Arial, sans-serif",
 };
@@ -724,62 +1043,96 @@ const headerStyle = {
 
 const inputPanelStyle = {
   display: "flex",
+
   gap: "18px",
+
   alignItems: "end",
+
   flexWrap: "wrap" as const,
+
   padding: "22px",
+
   background: "#020617",
+
   border:
     "1px solid #334155",
+
   borderRadius: "12px",
 };
 
 const inputGroupStyle = {
   display: "flex",
-  flexDirection: "column" as const,
+
+  flexDirection:
+    "column" as const,
 };
 
 const inputStyle = {
   padding: "12px",
+
   width: "280px",
+
   marginTop: "7px",
+
   background: "#0f172a",
+
   color: "white",
+
   border:
     "1px solid #475569",
+
   borderRadius: "8px",
+
   outline: "none",
 };
 
 const buttonStyle = {
-  padding: "13px 22px",
-  background: "#2563eb",
+  padding:
+    "13px 22px",
+
+  background:
+    "#2563eb",
+
   color: "white",
+
   border: "none",
+
   borderRadius: "8px",
+
   cursor: "pointer",
+
   fontWeight: 600,
 };
 
 const panelStyle = {
   marginTop: "30px",
+
   background: "#020617",
+
   borderRadius: "12px",
+
   padding: "25px",
+
   border:
     "1px solid #334155",
 };
 
 const panelHeaderStyle = {
   display: "flex",
+
   justifyContent:
     "space-between",
-  alignItems: "center",
+
+  alignItems:
+    "center",
 };
 
 const liveIndicatorStyle = {
   color: "#60a5fa",
-  fontFamily: "monospace",
+
+  fontFamily:
+    "monospace",
+
   fontSize: "13px",
 };
 
@@ -788,125 +1141,221 @@ const emptyStyle = {
 };
 
 const logStyle = {
-  padding: "7px 0",
+  padding:
+    "7px 0",
+
   color: "#cbd5e1",
-  fontFamily: "monospace",
+
+  fontFamily:
+    "monospace",
+
   fontSize: "14px",
 };
 
 const cardStyle = {
-  background: "#0f172a",
+  background:
+    "#0f172a",
+
   border:
     "1px solid #334155",
-  borderRadius: "10px",
-  padding: "20px",
-  marginTop: "15px",
+
+  borderRadius:
+    "10px",
+
+  padding:
+    "20px",
+
+  marginTop:
+    "15px",
 };
 
 const progressCardStyle = {
   marginTop: "20px",
+
   padding: "22px",
+
   background:
     "linear-gradient(135deg, #0f172a, #111827)",
+
   border:
     "1px solid #2563eb",
+
   borderRadius: "12px",
+
   boxShadow:
     "0 0 25px rgba(37,99,235,0.12)",
 };
 
 const progressHeaderStyle = {
   display: "flex",
+
   justifyContent:
     "space-between",
-  alignItems: "center",
+
+  alignItems:
+    "center",
 };
 
 const progressTitleStyle = {
   fontSize: "18px",
+
   fontWeight: 600,
 };
 
 const progressPercentStyle = {
-  fontFamily: "monospace",
+  fontFamily:
+    "monospace",
+
   fontSize: "20px",
+
   fontWeight: 700,
 };
 
 const progressNumbersStyle = {
   marginTop: "14px",
+
   display: "flex",
+
   justifyContent:
     "space-between",
+
+  gap: "15px",
+
   color: "#94a3b8",
-  fontFamily: "monospace",
+
+  fontFamily:
+    "monospace",
+
+  flexWrap:
+    "wrap" as const,
 };
 
 const progressTrackStyle = {
   width: "100%",
+
   height: "14px",
-  background: "#1e293b",
-  borderRadius: "999px",
-  overflow: "hidden" as const,
+
+  background:
+    "#1e293b",
+
+  borderRadius:
+    "999px",
+
+  overflow:
+    "hidden" as const,
+
   marginTop: "10px",
 };
 
 const progressFillStyle = {
   height: "100%",
+
   background:
     "linear-gradient(90deg, #2563eb, #22c55e)",
-  borderRadius: "999px",
+
+  borderRadius:
+    "999px",
+
   transition:
     "width 0.25s ease",
 };
 
 const progressMessageStyle = {
   marginTop: "11px",
-  fontFamily: "monospace",
+
+  fontFamily:
+    "monospace",
+
   fontSize: "13px",
+
   color: "#64748b",
+
   whiteSpace:
     "nowrap" as const,
-  overflow: "hidden",
+
+  overflow:
+    "hidden",
+
   textOverflow:
     "ellipsis",
 };
 
+const runningStatusStyle = {
+  marginTop: "14px",
+
+  display: "flex",
+
+  alignItems: "center",
+
+  gap: "8px",
+
+  color: "#94a3b8",
+
+  fontSize: "13px",
+};
+
+const runningDotStyle = {
+  color: "#22c55e",
+
+  fontSize: "10px",
+};
+
 const repairCardStyle = {
   marginTop: "15px",
-  padding: "18px 20px",
+
+  padding:
+    "18px 20px",
+
   background:
     "linear-gradient(135deg, #172554, #1e293b)",
+
   border:
     "1px solid #3b82f6",
-  borderRadius: "10px",
-  fontFamily: "monospace",
+
+  borderRadius:
+    "10px",
+
+  fontFamily:
+    "monospace",
 };
 
 const repairTitleStyle = {
   fontSize: "17px",
+
   fontWeight: 600,
+
   color: "#dbeafe",
 };
 
 const repairMessageStyle = {
   marginTop: "8px",
+
   color: "#bfdbfe",
 };
 
 const sectionStyle = {
   marginTop: "12px",
+
   lineHeight: "1.6",
 };
 
 const diffBox = {
-  background: "#020617",
-  borderRadius: "8px",
+  background:
+    "#020617",
+
+  borderRadius:
+    "8px",
+
   padding: "15px",
+
   marginTop: "15px",
-  fontFamily: "monospace",
+
+  fontFamily:
+    "monospace",
+
   whiteSpace:
     "pre-wrap" as const,
+
   overflowX:
     "auto" as const,
 };
@@ -917,58 +1366,62 @@ const removedCodeStyle = {
 
 const addedCodeStyle = {
   color: "#4ade80",
+
   marginTop: "6px",
 };
 
-const testResultHeaderStyle = {
-  display: "flex",
-  justifyContent:
-    "space-between",
-  alignItems: "center",
-};
-
-const statusBadgeStyle = {
-  padding: "5px 10px",
-  borderRadius: "999px",
-  fontFamily: "monospace",
-  fontSize: "12px",
-  fontWeight: 700,
-};
-
-const statsGridStyle = {
+const testResultMiniGridStyle = {
   display: "grid",
+
   gridTemplateColumns:
     "repeat(4, 1fr)",
-  gap: "12px",
+
+  gap: "10px",
+
   marginTop: "18px",
 };
 
-const statStyle = {
-  padding: "15px",
-  background: "#020617",
-  borderRadius: "8px",
+const miniStatStyle = {
+  padding: "12px",
+
+  background:
+    "#020617",
+
+  borderRadius:
+    "8px",
+
   border:
     "1px solid #1e293b",
 };
 
-const statLabelStyle = {
+const miniStatLabelStyle = {
   color: "#94a3b8",
-  fontSize: "13px",
+
+  fontSize: "12px",
 };
 
-const statValueStyle = {
-  marginTop: "8px",
-  fontSize: "22px",
+const miniStatValueStyle = {
+  marginTop: "5px",
+
+  fontSize: "19px",
+
   fontWeight: 700,
-  fontFamily: "monospace",
+
+  fontFamily:
+    "monospace",
 };
 
 const resultDetailsStyle = {
   marginTop: "18px",
+
   color: "#94a3b8",
+
   display: "flex",
+
   gap: "25px",
-  flexWrap: "wrap" as const,
+
+  flexWrap:
+    "wrap" as const,
 };
 
 export default App;

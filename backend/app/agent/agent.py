@@ -268,38 +268,45 @@ class CodingAgent:
             "→ Inspecting candidate source files..."
         )
 
-        for file_info in files[
-            :self.max_files_per_round
-        ]:
+        for file_info in files[:self.max_files_per_round]:
 
-            file_path = str(
-                file_info.get(
-                    "path",
-                    "",
+            if isinstance(file_info, str):
+                file_path = file_info.strip()
+                line_start = None
+                line_end = None
+                reason = ""
+
+            elif isinstance(file_info, dict):
+                file_path = str(
+                    file_info.get("path", "")
+                ).strip()
+
+                line_start = file_info.get(
+                    "line_start"
                 )
-            ).strip()
+
+                line_end = file_info.get(
+                    "line_end"
+                )
+
+                reason = str(
+                    file_info.get("reason", "")
+                )
+
+            else:
+                continue
 
             if not file_path:
                 continue
-
-            line_start = file_info.get(
-                "line_start"
-            )
-
-            line_end = file_info.get(
-                "line_end"
-            )
 
             if not self._file_exists(
                 repository_path,
                 file_path,
             ):
-
                 log(
                     "  ⚠️ Candidate does not exist: "
                     f"{file_path}"
                 )
-
                 continue
 
             log(
@@ -307,7 +314,6 @@ class CodingAgent:
             )
 
             try:
-
                 result = read_file(
                     repository_path,
                     file_path,
@@ -316,7 +322,6 @@ class CodingAgent:
                 )
 
             except Exception as e:
-
                 result = {
                     "success": False,
                     "error": str(e),
@@ -325,19 +330,15 @@ class CodingAgent:
             evidence.append({
                 "type": "file",
                 "path": file_path,
+                "reason": reason,
                 "result": result,
             })
 
             if isinstance(result, dict):
-
-                if result.get(
-                    "success"
-                ) is not False:
-
+                if result.get("success") is not False:
                     useful_evidence += 1
 
             elif result:
-
                 useful_evidence += 1
 
         return useful_evidence
