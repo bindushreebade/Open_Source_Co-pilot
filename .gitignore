@@ -1,0 +1,118 @@
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# =========================
+# Node / React
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# =========================
+# Frontend
+# =========================
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# =========================
+# Backend
+# =========================
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# =========================
+# AI Agent generated files
+# =========================
+logs/
+*.log
+agent_logs/
+agent_output/
+
+# =========================
+# Cloned repositories
+# =========================
+repositories/*
+
+# Keep the repositories directory itself
+!repositories/.gitkeep
+
+# =========================
+# Docker
+# =========================
+.docker/
+docker-data/
+
+# =========================
+# Temporary files
+# =========================
+tmp/
+temp/
+*.tmp
+*.temp
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# IDE / Editors
+# =========================
+.vscode/
+.idea/
+*.iml
+
+# =========================
+# Windows
+# =========================
+*.stackdump
+
+# =========================
+# Test / Coverage
+# =========================
+.pytest_cache/
+coverage/
+htmlcov/
+
+# =========================
+# Misc
+# =========================
+*.bak
+*.swp
+*.swo
