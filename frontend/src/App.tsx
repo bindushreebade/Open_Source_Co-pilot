@@ -411,7 +411,7 @@ function App() {
               />
             )
           )}
-          
+
           {testStarted && (
             <LiveTestCard
               started={testStarted}
@@ -466,26 +466,16 @@ function LiveTestCard({
 
   if (result) {
     const summary =
-      typeof result.summary ===
-      "object"
+      typeof result.summary === "object"
         ? result.summary
         : null;
 
-    const passed =
-      summary?.passed ?? 0;
+    const passed = summary?.passed ?? 0;
+    const failed = summary?.failed ?? 0;
+    const skipped = summary?.skipped ?? 0;
+    const didNotRun = summary?.did_not_run ?? 0;
 
-    const failed =
-      summary?.failed ?? 0;
-
-    const skipped =
-      summary?.skipped ?? 0;
-
-    const didNotRun =
-      summary?.did_not_run ?? 0;
-
-    const passedAll =
-      result.status ===
-      "passed";
+    const passedAll = result.status === "passed";
 
     return (
       <div
@@ -501,91 +491,86 @@ function LiveTestCard({
             : "0 0 25px rgba(239,68,68,0.12)",
         }}
       >
-
-        <div
-          style={
-            progressHeaderStyle
-          }
-        >
-          <div
-            style={
-              progressTitleStyle
-            }
-          >
+        <div style={progressHeaderStyle}>
+          <div style={progressTitleStyle}>
             {passedAll
-              ? "✅ Tests Completed"
-              : "❌ Tests Failed"}
+              ? "✅ Test Cases Passed"
+              : "❌ Test Cases Failed"}
           </div>
 
-          <div
-            style={
-              progressPercentStyle
-            }
-          >
-            {passedAll
-              ? "100%"
-              : "FAILED"}
+          <div style={progressPercentStyle}>
+            {passedAll ? "100%" : "FAILED"}
           </div>
         </div>
 
-        <div
-          style={
-            progressNumbersStyle
-          }
-        >
-          <span>
-            {passed.toLocaleString()}
-            {" passed"}
-          </span>
+        {/* Summary */}
+        <div style={testCaseSummaryStyle}>
+          <div>
+            <span style={testCaseNumberStyle}>
+              {passed.toLocaleString()}
+            </span>
 
-          <span>
-            {failed.toLocaleString()}
-            {" failed"}
-          </span>
+            <span style={testCaseLabelStyle}>
+              test cases passed
+            </span>
+          </div>
 
-          <span>
-            {skipped.toLocaleString()}
-            {" skipped"}
-          </span>
+          <div>
+            <span
+              style={{
+                ...testCaseNumberStyle,
+                color: "#f87171",
+              }}
+            >
+              {failed.toLocaleString()}
+            </span>
+
+            <span style={testCaseLabelStyle}>
+              test cases failed
+            </span>
+          </div>
+
+          <div>
+            <span
+              style={{
+                ...testCaseNumberStyle,
+                color: "#fbbf24",
+              }}
+            >
+              {skipped.toLocaleString()}
+            </span>
+
+            <span style={testCaseLabelStyle}>
+              test cases skipped
+            </span>
+          </div>
         </div>
 
-        <div
-          style={
-            progressTrackStyle
-          }
-        >
+        {/* Progress bar */}
+        <div style={progressTrackStyle}>
           <div
             style={{
               ...progressFillStyle,
 
-              width:
-                passedAll
-                  ? "100%"
-                  : `${progress?.percent ?? 0}%`,
+              width: passedAll
+                ? "100%"
+                : `${progress?.percent ?? 0}%`,
 
-              background:
-                passedAll
-                  ? "#22c55e"
-                  : "#ef4444",
+              background: passedAll
+                ? "#22c55e"
+                : "#ef4444",
             }}
           />
         </div>
 
-        <div
-          style={
-            progressMessageStyle
-          }
-        >
+        <div style={progressMessageStyle}>
           {passedAll
-            ? "Full test suite completed successfully."
-            : "Test suite completed with failures."}
+            ? "All test cases completed successfully."
+            : `${failed.toLocaleString()} test cases failed.`}
         </div>
 
-        <div
-          style={
-            testResultMiniGridStyle
-          }
-        >
+        {/* Detailed stats */}
+        <div style={testResultMiniGridStyle}>
           <MiniStat
             label="Passed"
             value={passed}
@@ -611,22 +596,15 @@ function LiveTestCard({
           />
         </div>
 
-        <div
-          style={
-            resultDetailsStyle
-          }
-        >
+        <div style={resultDetailsStyle}>
           <div>
-            <strong>
-              Exit Code:
-            </strong>{" "}
+            <strong>Exit Code:</strong>{" "}
             {result.exit_code}
           </div>
 
           <div>
             🔧 Repair attempt:{" "}
-            {result.repair_attempt ??
-              0}
+            {result.repair_attempt ?? 0}
           </div>
         </div>
       </div>
@@ -1409,6 +1387,48 @@ const miniStatValueStyle = {
 
   fontFamily:
     "monospace",
+};
+
+const testCaseSummaryStyle = {
+  display: "grid",
+
+  gridTemplateColumns:
+    "repeat(3, 1fr)",
+
+  gap: "20px",
+
+  marginTop: "20px",
+
+  padding: "16px",
+
+  background: "#020617",
+
+  borderRadius: "10px",
+
+  border:
+    "1px solid #1e293b",
+};
+
+const testCaseNumberStyle = {
+  display: "block",
+
+  fontSize: "24px",
+
+  fontWeight: 700,
+
+  fontFamily: "monospace",
+
+  color: "#e2e8f0",
+};
+
+const testCaseLabelStyle = {
+  display: "block",
+
+  marginTop: "5px",
+
+  color: "#94a3b8",
+
+  fontSize: "13px",
 };
 
 const resultDetailsStyle = {
